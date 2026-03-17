@@ -1,158 +1,213 @@
-# 📋 Job Application Tracker — Google Apps Script
+# 📋 Job Application Tracker
+### Powered by Google Apps Script · Gmail · Google Sheets
 
-> Automatically track every job application directly from your Gmail into a fully organised Google Sheet — with a live dashboard, analytics, and auto-reply drafts. 100% free, runs inside your own Google account.
+![Version](https://img.shields.io/badge/version-3.0-blue)
+![License](https://img.shields.io/badge/license-Free-green)
+![Languages](https://img.shields.io/badge/languages-EN%20%7C%20DE-orange)
+![Platform](https://img.shields.io/badge/platform-Google%20Workspace-red)
+
+> Automatically scan your Gmail, extract job application details, track status changes, generate analytics, and draft recruiter replies — all inside a free Google Sheet.
 
 ---
 
-## 🚀 What It Does
+## 📌 Table of Contents
 
-Stop manually logging every application. This script scans your Gmail every 15 minutes, extracts key details from job-related emails, and keeps a live spreadsheet up to date — including status changes, HR contact info, and interview progress.
+- [Overview](#-overview)
+- [Features](#-features)
+- [How It Works](#-how-it-works)
+- [Setup Guide](#-setup-guide)
+- [Configuration](#-configuration)
+- [Sheet Structure](#-sheet-structure)
+- [Supported Languages](#-supported-languages)
+- [ATS Platforms](#-detected-ats-platforms)
+- [Privacy & Security](#-privacy--security)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
 
-Supports both **English and German** emails out of the box.
+---
+
+## 🧩 Overview
+
+Manually tracking job applications across spreadsheets, sticky notes, and browser tabs is exhausting. This script does it all automatically.
+
+Every 15 minutes it scans your Gmail, identifies job-related emails, and logs them into a structured Google Sheet — complete with company name, job title, HR contact, and application status. It also builds a live Dashboard, an Analytics tab, and auto-drafts reply emails when an interview or offer arrives.
+
+**No paid tools. No third-party apps. Everything stays in your Google account.**
 
 ---
 
 ## ✨ Features
 
-### 📥 Email Processing
-- Automatically scans Gmail every 15 minutes
-- Checks the last 90 days, up to 150 threads per run
-- Filters by job-related keywords in English and German
-- Labels all processed threads with `JobTracker` inside Gmail
-
-### 🧠 Smart Classification
-9 status levels tracked in priority order:
-
-| Status | Description |
+| Category | What It Does |
 |---|---|
-| Applied | Initial outreach sent |
-| Application Received | Confirmation email from company |
-| Follow-up Required | You sent a follow-up |
-| Interview Invitation | Company invited you to interview |
-| Interview Scheduled | Interview time confirmed |
-| Technical Assessment | Coding challenge / take-home sent |
-| Offer | Job offer received |
-| Rejected | Application unsuccessful |
-| Withdrawn | You withdrew your application |
-
-> Status only ever moves **forward** — it will never downgrade (e.g. an Offer will never be overwritten by a Rejection email from a different role).
-
-### 🔍 Data Extraction
-Automatically pulls from each email:
-- Company name (from domain, body text, German legal forms like GmbH / AG)
-- Job title (from subject line and body, EN + DE patterns)
-- HR name (filters out ATS bots and noreply senders)
-- HR email address and phone number
-- Direct Gmail link to the thread
-
-### 🔁 Smart Duplicate Detection
-- **Thread ID matching** — recognises the same Gmail thread on repeat runs
-- **Fuzzy fingerprint matching** — detects the same job applied via different channels (e.g. LinkedIn and company website) and merges them into one row instead of creating duplicates
-
-### 📝 Auto-Reply Drafts
-When an interview invite, scheduled interview, technical assessment, or offer arrives, the script automatically creates a polished Gmail draft ready for you to review and send:
-- Detects email language (EN or DE) automatically
-- Addresses the recruiter by name when available
-- Includes company name and job title in the reply
-- Checks for existing drafts to avoid duplicates
-- Toggle off anytime: set `AUTO_DRAFT_ENABLED = false`
-
-### 📋 Dashboard Tab
-A live summary sheet that refreshes every 15 minutes:
-- **KPI row** — Total Applications, Interviews, Offers, Rejections, Response Rate
-- **Status breakdown** with inline bar charts
-- **ATS / source platform** breakdown
-- **Today's activity** table
-
-### 📊 Analytics Tab
-A dedicated analytics sheet with:
-- **Conversion funnel** — Applied → Received → Interview → Offer, with percentage rates
-- **Weekly volume chart** — last 12 weeks of activity with colour-coded trend bars
-- **Day-of-week heatmap** — shows which days you receive responses most
-- **Platform performance table** — per ATS: applications, interviews, interview rate, and offers
-
-### 📧 Daily Summary Email
-- Sent to your own Gmail at 8am every day
-- Shows new emails processed, status breakdown, and overall stats
-- Includes a direct link back to your sheet
+| 📥 Email Scanning | Scans Gmail every 15 min, last 90 days, up to 150 threads |
+| 🧠 Classification | 9 status levels, EN + DE keywords, status only moves forward |
+| 🔍 Data Extraction | Company, job title, HR name, email, phone, Gmail link |
+| 🔁 Deduplication | Thread ID + fuzzy fingerprint matching to prevent duplicates |
+| 📝 Auto-Drafts | Bilingual reply drafts for interviews, assessments, and offers |
+| 📋 Dashboard | Live KPIs, status breakdown, ATS sources, today's activity |
+| 📊 Analytics | Funnel rates, weekly trends, day-of-week heatmap, platform stats |
+| 📧 Daily Email | 8am summary with new activity and overall stats |
 
 ---
 
-## 🛠️ Setup
+## 🔄 How It Works
 
-### Step 1 — Create a Google Sheet
-Open [Google Sheets](https://sheets.google.com) and create a new blank spreadsheet.
+```
+Gmail Inbox
+    │
+    ▼
+Gmail Search Query (job keywords + last 90 days)
+    │
+    ▼
+For each thread:
+    ├─ Already tracked?        ──► Update status if progressed
+    ├─ Same job, new channel?  ──► Merge into existing row
+    └─ New application?        ──► Append new row
+    │
+    ▼
+Auto-draft reply (if Interview / Offer / Assessment)
+    │
+    ▼
+Refresh Dashboard + Analytics tabs
+```
+
+---
+
+## 🛠️ Setup Guide
+
+### Prerequisites
+- A Google account with Gmail
+- Google Sheets (free)
+- No coding experience needed
+
+---
+
+### Step 1 — Create a New Google Sheet
+
+Go to [sheets.google.com](https://sheets.google.com) and create a blank spreadsheet. Give it any name you like.
+
+---
 
 ### Step 2 — Open Apps Script
-Inside the sheet, go to **Extensions → Apps Script**.
+
+Inside the sheet click **Extensions → Apps Script**. A new editor tab will open.
+
+---
 
 ### Step 3 — Paste the Script
-Delete any existing code and paste the full contents of `JobTracker.gs` into the editor.
+
+Delete all existing code in the editor, paste the full contents of `JobTracker.gs`, and click 💾 **Save**.
+
+---
 
 ### Step 4 — Install Triggers
-In the Apps Script editor, run these two functions **once** by selecting them from the dropdown and clicking ▶ Run:
 
+In the Apps Script editor, run each of these functions **once** by selecting from the dropdown and clicking ▶ **Run**:
+
+```js
+installTrigger()              // Starts the 15-minute Gmail scan
+installDailySummaryTrigger()  // Enables the 8am daily summary email
 ```
-installTrigger()             → starts the 15-minute email scan
-installDailySummaryTrigger() → enables the 8am daily summary email
-```
+
+---
 
 ### Step 5 — Authorise Permissions
-Google will ask you to grant permissions. The script needs access to:
-- **Gmail** — to read job-related emails and create draft replies
-- **Google Sheets** — to write data into your spreadsheet
 
-> ⚠️ All data stays entirely within your own Google account. Nothing is sent to any external server.
+Google will prompt you to grant access. Click through and allow:
 
-### Step 6 — Run Manually (First Time)
-Select `runTracker` from the dropdown and click ▶ Run to do an immediate first scan. After that, it runs automatically every 15 minutes.
+| Permission | Why It's Needed |
+|---|---|
+| Gmail (read) | To scan job-related emails |
+| Gmail (compose) | To create auto-reply drafts |
+| Google Sheets | To write data into your spreadsheet |
+
+> 🔒 All permissions are scoped to your own account. Nothing leaves Google's ecosystem.
+
+---
+
+### Step 6 — Run the First Scan
+
+Select `runTracker` from the function dropdown and click ▶ **Run**. This triggers an immediate first scan. From this point it runs automatically every 15 minutes.
+
+Check **View → Logs** in the editor to see what was found.
 
 ---
 
 ## ⚙️ Configuration
 
-All settings are at the top of the script file:
+All settings are at the top of `JobTracker.gs`:
 
 | Constant | Default | Description |
 |---|---|---|
-| `SHEET_NAME` | `"Applications"` | Name of the data sheet tab |
+| `SHEET_NAME` | `"Applications"` | Name of the main data tab |
 | `DASHBOARD_NAME` | `"Dashboard"` | Name of the dashboard tab |
 | `ANALYTICS_NAME` | `"Analytics"` | Name of the analytics tab |
-| `LABEL_NAME` | `"JobTracker"` | Gmail label applied to processed threads |
-| `MAX_THREADS` | `150` | Max emails scanned per run |
+| `LABEL_NAME` | `"JobTracker"` | Gmail label for processed threads |
+| `MAX_THREADS` | `150` | Max threads scanned per run |
 | `AUTO_DRAFT_ENABLED` | `true` | Set to `false` to disable auto-drafts |
-| `DRAFT_TRIGGER_STATUSES` | Interview, Offer, Assessment | Which statuses trigger a draft |
+| `DRAFT_TRIGGER_STATUSES` | Interview, Offer, Assessment | Statuses that trigger a draft reply |
 
-### Scan more history
-Change `newer_than:90d` in `getJobEmailThreads()` to e.g. `newer_than:180d`.
+### Common Tweaks
 
-### One-time full mailbox scan
-Temporarily remove `newer_than:90d` and set `MAX_THREADS = 500`, run once manually, then restore the defaults.
+**Scan more history**
+```js
+// In getJobEmailThreads() — change 90 to any number of days
+"newer_than:180d"
+```
 
-> ⚠️ Google Apps Script has a 6-minute execution limit per run. Very large scans may time out.
+**Scan entire mailbox (one-time)**
+```js
+// Temporarily remove newer_than and increase thread limit
+MAX_THREADS = 500
+// Remove "newer_than:90d" from the query
+// Run once manually, then restore defaults
+```
+
+> ⚠️ Apps Script has a **6-minute execution limit** per run. Large scans may time out — increase gradually.
+
+**Change summary email time**
+```js
+// In installDailySummaryTrigger()
+.atHour(8)  // Change to any hour in 24h format
+```
 
 ---
 
 ## 🗂️ Sheet Structure
 
-The **Applications** sheet contains these columns:
+The **Applications** tab contains 14 columns:
 
-| Column | Description |
+| # | Column | Auto-filled? | Description |
+|---|---|---|---|
+| 1 | Thread ID | ✅ | Internal Gmail thread identifier |
+| 2 | Company | ✅ | Extracted company name |
+| 3 | Job Title | ✅ | Extracted job title |
+| 4 | HR Name | ✅ | Recruiter or sender name |
+| 5 | HR Email | ✅ | Recruiter email address |
+| 6 | HR Phone | ✅ | Phone number from email signature |
+| 7 | Status | ✅ | Colour-coded application status |
+| 8 | Date Applied | ✏️ Manual | Fill in the date you submitted |
+| 9 | Email Date | ✅ | Date of the most recent relevant email |
+| 10 | Subject | ✅ | Email subject line |
+| 11 | Gmail Link | ✅ | Direct link to the Gmail thread |
+| 12 | Notes | ✅ | Auto-appended status history and dedup notes |
+| 13 | ATS Platform | ✅ | Detected platform (Greenhouse, Workday, etc.) |
+| 14 | Fingerprint | ✅ | Internal dedup key — company + job title normalised |
+
+### Status Colour Coding
+
+| Status | Colour |
 |---|---|
-| Thread ID | Internal Gmail thread ID |
-| Company | Extracted company name |
-| Job Title | Extracted job title |
-| HR Name | Recruiter / sender name |
-| HR Email | Recruiter email address |
-| HR Phone | Phone number if found in signature |
-| Status | Current application status (colour-coded) |
-| Date Applied | Fill in manually |
-| Email Date | Date of the most recent relevant email |
-| Subject | Email subject line |
-| Gmail Link | Direct link to the Gmail thread |
-| Notes | Auto-updated status history + duplicate notes |
-| ATS Platform | Detected platform (Greenhouse, Workday, etc.) |
-| Fingerprint | Internal dedup key (company + title) |
+| Offer | 🟢 Green |
+| Interview Scheduled | 🔵 Blue |
+| Interview Invitation | 🩵 Light Blue |
+| Technical Assessment | 🟣 Purple |
+| Application Received | 🟡 Yellow |
+| Applied | ⚪ Light Grey |
+| Rejected | 🔴 Light Red |
+| Follow-up Required | 🟠 Amber |
+| Withdrawn | ⬜ Grey |
 
 ---
 
@@ -161,58 +216,72 @@ The **Applications** sheet contains these columns:
 | Feature | English | German |
 |---|---|---|
 | Status classification | ✅ | ✅ |
-| Company extraction | ✅ | ✅ (GmbH, AG, SE, KG) |
+| Company name extraction | ✅ | ✅ incl. GmbH, AG, SE, KG |
 | Job title extraction | ✅ | ✅ |
 | HR name extraction | ✅ | ✅ |
-| Auto-reply drafts | ✅ | ✅ |
+| Auto-reply drafts | ✅ | ✅ auto-detected |
+| Daily summary email | ✅ | — |
+
+Language is auto-detected per email. No manual setup required.
 
 ---
 
 ## 🏢 Detected ATS Platforms
 
-Greenhouse · Lever · Workday · SmartRecruiters · Taleo · iCIMS · Recruitee · Jobvite · Personio · Softgarden · StepStone · XING · LinkedIn
+| Platform | Domain Detected |
+|---|---|
+| Greenhouse | greenhouse.io |
+| Lever | lever.co |
+| Workday | workday.com / myworkdayjobs.com |
+| SmartRecruiters | smartrecruiters.com |
+| Taleo | taleo.net |
+| iCIMS | icims.com |
+| Recruitee | recruitee.com |
+| Jobvite | jobvite.com |
+| Personio | personio.de |
+| Softgarden | softgarden.de |
+| StepStone | stepstone.de |
+| XING | xing.com |
+| LinkedIn | linkedin.com |
 
 ---
 
 ## 🔒 Privacy & Security
 
-- The script runs entirely inside **your own Google account**
-- No data is sent to any external server or third party
-- No API keys or paid services required
-- You can view all permissions granted under **Extensions → Apps Script → Project Settings**
-- Deleting the script removes all automation immediately
+| Topic | Detail |
+|---|---|
+| Data location | Stays entirely within your Google account |
+| External servers | None — no data is sent outside Google |
+| API keys | Not required |
+| Third-party services | Not used |
+| Permissions | Viewable under Extensions → Apps Script → Project Settings |
+| Removal | Deleting the script stops all automation immediately |
 
 ---
 
 ## 🐛 Troubleshooting
 
-**No rows appearing after first run**
-Make sure your Gmail has emails matching the search keywords. Try running `runTracker()` manually and check the Apps Script **Logs** (View → Logs) for output.
-
-**Wrong company or job title extracted**
-The extraction relies on email formatting. You can manually edit any cell — the script will not overwrite fields you've filled in manually (except Status and Email Date on updates).
-
-**Draft created in wrong language**
-The language detector needs at least 2 German signal words to switch to DE. You can manually delete the draft and reply however you prefer.
-
-**Trigger not running**
-Go to **Extensions → Apps Script → Triggers** (clock icon) and confirm the trigger exists. If not, run `installTrigger()` again.
-
-**Execution time exceeded**
-Reduce `MAX_THREADS` or narrow `newer_than:Xd` to a shorter window.
+| Problem | Solution |
+|---|---|
+| No rows appearing after first run | Run `runTracker()` manually and check **View → Logs**. Make sure your Gmail has emails matching job keywords. |
+| Wrong company or job title | Edit the cell manually — the script won't overwrite manual edits except Status and Email Date. |
+| Draft created in wrong language | The detector needs 2+ German signal words. Delete the draft and reply manually if needed. |
+| Trigger not firing | Go to **Extensions → Apps Script → Triggers** (clock icon). If missing, run `installTrigger()` again. |
+| Execution timed out | Reduce `MAX_THREADS` or shorten the `newer_than:Xd` window. |
+| Duplicate rows appearing | Check that the Fingerprint column is populated. If company or job title couldn't be extracted, dedup won't activate. |
+| Draft re-created every run | The script checks by thread ID. If you delete a draft, a new one may appear on the next run for that thread. |
 
 ---
 
 ## 📄 License
 
-Free to use and modify for personal use. If you share or build on this publicly, a credit or link back is appreciated.
+Free to use and modify for personal use.
+If you share this publicly or build on it, a link back to this repo is appreciated.
 
 ---
 
 ## 🙌 Credits
 
-Built with Google Apps Script · Gmail API · Google Sheets API
+Built with **Google Apps Script** · **Gmail API** · **Google Sheets API**
 
-If this helped your job search, consider sharing it with someone who needs it. ⭐
-#   J o b T r a c k e r  
- 
+If this helped your job search, consider giving the repo a ⭐ and sharing it with someone who's job hunting.
