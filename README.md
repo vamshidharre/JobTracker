@@ -1,7 +1,7 @@
 # 📋 Job Application Tracker
 ### Powered by Google Apps Script · Gmail · Google Sheets
 
-![Version](https://img.shields.io/badge/version-3.0-blue)
+![Version](https://img.shields.io/badge/version-2.0-blue)
 ![License](https://img.shields.io/badge/license-Free-green)
 ![Languages](https://img.shields.io/badge/languages-EN%20%7C%20DE-orange)
 ![Platform](https://img.shields.io/badge/platform-Google%20Workspace-red)
