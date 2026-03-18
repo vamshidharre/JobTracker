@@ -7,7 +7,8 @@
 const SHEET_NAME      = "Applications";
 const DASHBOARD_NAME  = "Dashboard";
 const LABEL_NAME      = "JobTracker";
-const MAX_THREADS     = 150;
+const MAX_THREADS     = 50;          // lowered from 150 to stay within quotas
+const MAX_PROCESS     = 30;          // max threads to fully process per run (each costs ~2 API calls)
 
 // ── Column positions (1-based) ──────────────────────────────
 const COL = {
@@ -166,48 +167,79 @@ const HR_NAME_RE  = /(?:regards|sincerely|best|cheers|thanks|mit\s+freundlichen\
 
 
 // ============================================================
-// MAIN ENTRY — triggered every 15 minutes
+// MAIN ENTRY — triggered every 30 minutes
 // ============================================================
 function runTracker() {
   const sheet    = getOrCreateSheet();
   const existing = getExistingIndex(sheet);   // { threadId: rowNum } + { fingerprint: rowNum }
   const threads  = getJobEmailThreads();
 
-  let added = 0, updated = 0, dupeSkipped = 0;
+  let added = 0, updated = 0, dupeSkipped = 0, skipped = 0;
+  const processed = [];   // successfully processed threads (for labelling)
 
-  threads.forEach(thread => {
-    const id       = thread.getId();
-    const messages = thread.getMessages();
-    const latest   = messages[messages.length - 1];
-    const body     = latest.getPlainBody();
-    const subject  = latest.getSubject();
-    const combined = subject + "\n" + body;
-    const status   = classifyEmail(combined);
-    const data     = extractData(latest, thread, status);
-    const fp       = data.fingerprint;
-
-    if (existing.byThreadId[id]) {
-      // Same Gmail thread — update status if progressed
-      updateStatusIfNewer(sheet, existing.byThreadId[id], status, data);
-      updated++;
-    } else if (fp && existing.byFingerprint[fp]) {
-      // Different thread but same company+title — likely duplicate application channel
-      const targetRow = existing.byFingerprint[fp];
-      updateStatusIfNewer(sheet, targetRow, status, data);
-      appendDuplicateNote(sheet, targetRow, id, data);
-      dupeSkipped++;
-    } else {
-      appendRow(sheet, data);
-      const newRow = sheet.getLastRow();
-      existing.byThreadId[id] = newRow;
-      if (fp) existing.byFingerprint[fp] = newRow;
-      added++;
+  for (let i = 0; i < threads.length; i++) {
+    // Per-run safety cap to stay within quotas
+    if (added + updated + dupeSkipped >= MAX_PROCESS) {
+      skipped = threads.length - i;
+      Logger.log(`⚠️ Reached per-run cap (${MAX_PROCESS}). ${skipped} threads deferred to next run.`);
+      break;
     }
-  });
 
-  Logger.log(`Run complete — ${added} added, ${updated} updated, ${dupeSkipped} duplicates merged.`);
-  labelProcessedThreads(threads);
-  refreshDashboard();
+    const thread = threads[i];
+    const id     = thread.getId();
+
+    // Skip threads we already have in the sheet (belt-and-suspenders with -label: query)
+    if (existing.byThreadId[id]) {
+      // Still label it so the search excludes it next time
+      processed.push(thread);
+      continue;
+    }
+
+    try {
+      const messages = thread.getMessages();
+      const latest   = messages[messages.length - 1];
+      const body     = latest.getPlainBody();
+      const subject  = latest.getSubject();
+      const combined = subject + "\n" + body;
+      const status   = classifyEmail(combined);
+      const data     = extractData(latest, thread, status);
+      const fp       = data.fingerprint;
+
+      if (fp && existing.byFingerprint[fp]) {
+        // Different thread but same company+title — likely duplicate application channel
+        const targetRow = existing.byFingerprint[fp];
+        updateStatusIfNewer(sheet, targetRow, status, data);
+        appendDuplicateNote(sheet, targetRow, id, data);
+        dupeSkipped++;
+      } else {
+        appendRow(sheet, data);
+        const newRow = sheet.getLastRow();
+        existing.byThreadId[id] = newRow;
+        if (fp) existing.byFingerprint[fp] = newRow;
+        added++;
+      }
+      processed.push(thread);
+    } catch (e) {
+      // Catch quota errors gracefully and stop processing
+      if (e.message && e.message.includes("Service invoked too many times")) {
+        Logger.log(`⛔ Quota limit hit after processing ${i} threads. Stopping early.`);
+        break;
+      }
+      Logger.log(`⚠️ Error processing thread ${id}: ${e.message}`);
+    }
+  }
+
+  Logger.log(`Run complete — ${added} added, ${updated} updated, ${dupeSkipped} duplicates merged, ${skipped} deferred.`);
+
+  // Only label threads that were successfully processed
+  if (processed.length > 0) {
+    labelProcessedThreads(processed);
+  }
+
+  // Only refresh dashboard if something changed
+  if (added > 0 || updated > 0 || dupeSkipped > 0) {
+    refreshDashboard();
+  }
 }
 
 
@@ -221,7 +253,8 @@ function getJobEmailThreads() {
     "OR subject:(bewerbung OR vorstellungsgespräch OR absage OR angebot OR einladung)",
     "OR from:(greenhouse.io OR lever.co OR workday.com OR personio.de OR softgarden.de)",
     ")",
-    "newer_than:90d",
+    "newer_than:30d",             // reduced from 90d — old threads are already tracked
+    `-label:${LABEL_NAME}`,       // ← KEY FIX: skip threads already processed & labelled
   ].join(" ");
   return GmailApp.search(query, 0, MAX_THREADS);
 }
@@ -611,10 +644,10 @@ function installTrigger() {
 
   ScriptApp.newTrigger("runTracker")
     .timeBased()
-    .everyMinutes(15)
+    .everyMinutes(30)       // reduced from 15 to stay within daily quotas
     .create();
 
-  Logger.log("✅ Trigger installed — runTracker fires every 15 minutes.");
+  Logger.log("✅ Trigger installed — runTracker fires every 30 minutes.");
 }
 
 function installDailySummaryTrigger() {
