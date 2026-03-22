@@ -57,12 +57,26 @@ const STATUS_COLORS = {
 // ── Classification rules (EN + DE, ordered by priority) ────
 const RULES = [
   {
+    status: "Rejected",
+    keywords: [
+      "unfortunately","regret to inform","not moving forward","not selected",
+      "other candidates","decided to proceed with other","position has been filled",
+      "you have not been selected","we will not be moving forward","not be progressing",
+      "we have decided not to proceed","unsuccessful","did not match","not the right fit",
+      "leider","absage","nicht weiterkommen","nicht ausgewählt",
+      "haben uns für andere kandidaten entschieden","stelle besetzt",
+      "können wir deine bewerbung leider nicht weiter berücksichtigen",
+      "wir können ihnen leider keine zusage","bedauerlicherweise","nicht berücksichtigen",
+    ],
+  },
+  {
     status: "Offer",
     keywords: [
       "offer letter","job offer","we'd like to offer","we would like to offer",
-      "pleased to offer","formal offer","compensation package",
+      "pleased to offer","formal offer","compensation package","employment offer",
+      "extend an offer","offer of employment","accept our offer",
       "angebot","arbeitsvertrag","herzlichen glückwunsch","vertragsangebot",
-      "wir freuen uns, ihnen ein angebot",
+      "wir freuen uns, ihnen ein angebot","wir möchten ihnen ein angebot",
     ],
   },
   {
@@ -83,21 +97,25 @@ const RULES = [
     ],
   },
   {
+    status: "Follow-up Required",
+    keywords: [
+      "following up","just checking in","wanted to follow up",
+      "any update on my application","checking on the status",
+      "additional information","additional documents","please provide","need from you",
+      "fragebogen","gehaltsvorstellung","unterlagen","zeugnisse","zurückzusenden",
+      "bitte senden sie","bitte übermitteln","noch fehlende","ergänzende unterlagen",
+      "questionnaire","salary expectation","please send","please submit","missing documents",
+      "complete your application","additional steps required",
+    ],
+  },
+  {
     status: "Interview Invitation",
     keywords: [
       "invite you to interview","schedule an interview","schedule a call",
       "phone screen","we'd like to invite","would you be available",
-      "let's connect","kennenlernen","vorstellungsgespräch","einladung zum gespräch",
+      "let's connect","vorstellungsgespräch","einladung zum gespräch",
       "telefoninterview","wir würden uns freuen","können wir einen termin",
-    ],
-  },
-  {
-    status: "Rejected",
-    keywords: [
-      "unfortunately","regret to inform","not moving forward","not selected",
-      "other candidates","decided to proceed with other","position has been filled",
-      "leider","absage","nicht weiterkommen","nicht ausgewählt",
-      "haben uns für andere kandidaten entschieden","stelle besetzt",
+      "wir laden sie ein","terminvorschlag",
     ],
   },
   {
@@ -108,13 +126,6 @@ const RULES = [
       "application submitted","your cv has been received",
       "bewerbungseingang","eingang deiner bewerbung","wir haben deine bewerbung erhalten",
       "bestätigung deiner bewerbung","vielen dank für deine bewerbung",
-    ],
-  },
-  {
-    status: "Follow-up Required",
-    keywords: [
-      "following up","just checking in","wanted to follow up",
-      "any update on my application","checking on the status",
     ],
   },
 ];
