@@ -1,12 +1,19 @@
 # 📋 Job Application Tracker
 ### Powered by Google Apps Script · Gmail · Google Sheets
 
-![Version](https://img.shields.io/badge/version-2.0-blue)
+![Version](https://img.shields.io/badge/version-2.1-blue)
 ![License](https://img.shields.io/badge/license-Free-green)
 ![Languages](https://img.shields.io/badge/languages-EN%20%7C%20DE-orange)
 ![Platform](https://img.shields.io/badge/platform-Google%20Workspace-red)
 
 > Automatically scan your Gmail, extract job application details, track status changes, generate analytics, and draft recruiter replies — all inside a free Google Sheet.
+
+### 🆕 What's New in v2.1
+
+- **🗓️ Automatic Date Applied extraction** — The script now automatically extracts the date you applied from email content (e.g., "Sie haben sich am 15.03.2024 beworben") or uses the first message date as a fallback
+- **🎯 Improved German classification** — Better accuracy for "Application Received" emails, especially German acknowledgments from companies like FERCHAU
+- **📊 Smarter quota management** — Enhanced daily API call tracking to avoid Google quota limits
+- **✅ Fixed false positives** — "Follow-up Required" keywords are now more context-aware and won't trigger on acknowledgment emails
 
 ---
 
@@ -30,7 +37,7 @@
 
 Manually tracking job applications across spreadsheets, sticky notes, and browser tabs is exhausting. This script does it all automatically.
 
-Every 15 minutes it scans your Gmail, identifies job-related emails, and logs them into a structured Google Sheet — complete with company name, job title, HR contact, and application status. It also builds a live Dashboard, an Analytics tab, and auto-drafts reply emails when an interview or offer arrives.
+Every hour it scans your Gmail, identifies job-related emails, and logs them into a structured Google Sheet — complete with company name, job title, HR contact, and application status. It also builds a live Dashboard and auto-extracts the date you applied.
 
 **No paid tools. No third-party apps. Everything stays in your Google account.**
 
@@ -40,13 +47,12 @@ Every 15 minutes it scans your Gmail, identifies job-related emails, and logs th
 
 | Category | What It Does |
 |---|---|
-| 📥 Email Scanning | Scans Gmail every 15 min, last 90 days, up to 150 threads |
-| 🧠 Classification | 9 status levels, EN + DE keywords, status only moves forward |
-| 🔍 Data Extraction | Company, job title, HR name, email, phone, Gmail link |
+| 📥 Email Scanning | Scans Gmail every hour, last 30 days, up to 20 threads per run |
+| 🧠 Classification | 9 status levels, EN + DE keywords, improved accuracy for "Application Received" |
+| 🔍 Data Extraction | Company, job title, HR name, email, phone, **application date**, Gmail link |
 | 🔁 Deduplication | Thread ID + fuzzy fingerprint matching to prevent duplicates |
-| 📝 Auto-Drafts | Bilingual reply drafts for interviews, assessments, and offers |
 | 📋 Dashboard | Live KPIs, status breakdown, ATS sources, today's activity |
-| 📊 Analytics | Funnel rates, weekly trends, day-of-week heatmap, platform stats |
+| 🛡️ Quota Management | Smart daily API call tracking to avoid Google quota limits |
 | 📧 Daily Email | 8am summary with new activity and overall stats |
 
 ---
@@ -57,7 +63,7 @@ Every 15 minutes it scans your Gmail, identifies job-related emails, and logs th
 Gmail Inbox
     │
     ▼
-Gmail Search Query (job keywords + last 90 days)
+Gmail Search Query (job keywords + last 30 days)
     │
     ▼
 For each thread:
@@ -66,10 +72,10 @@ For each thread:
     └─ New application?        ──► Append new row
     │
     ▼
-Auto-draft reply (if Interview / Offer / Assessment)
+Extract application date from email or use first message date
     │
     ▼
-Refresh Dashboard + Analytics tabs
+Refresh Dashboard + label processed threads
 ```
 
 ---
@@ -106,7 +112,7 @@ Delete all existing code in the editor, paste the full contents of `JobTracker.g
 In the Apps Script editor, run each of these functions **once** by selecting from the dropdown and clicking ▶ **Run**:
 
 ```js
-installTrigger()              // Starts the 15-minute Gmail scan
+installTrigger()              // Starts the hourly Gmail scan
 installDailySummaryTrigger()  // Enables the 8am daily summary email
 ```
 
@@ -128,7 +134,7 @@ Google will prompt you to grant access. Click through and allow:
 
 ### Step 6 — Run the First Scan
 
-Select `runTracker` from the function dropdown and click ▶ **Run**. This triggers an immediate first scan. From this point it runs automatically every 15 minutes.
+Select `runTracker` from the function dropdown and click ▶ **Run**. This triggers an immediate first scan. From this point it runs automatically every hour.
 
 Check **View → Logs** in the editor to see what was found.
 
@@ -142,29 +148,35 @@ All settings are at the top of `JobTracker.gs`:
 |---|---|---|
 | `SHEET_NAME` | `"Applications"` | Name of the main data tab |
 | `DASHBOARD_NAME` | `"Dashboard"` | Name of the dashboard tab |
-| `ANALYTICS_NAME` | `"Analytics"` | Name of the analytics tab |
 | `LABEL_NAME` | `"JobTracker"` | Gmail label for processed threads |
-| `MAX_THREADS` | `150` | Max threads scanned per run |
-| `AUTO_DRAFT_ENABLED` | `true` | Set to `false` to disable auto-drafts |
-| `DRAFT_TRIGGER_STATUSES` | Interview, Offer, Assessment | Statuses that trigger a draft reply |
+| `MAX_THREADS` | `20` | Max threads scanned per run |
+| `MAX_PROCESS` | `15` | Max threads processed per run |
+| `MAX_DAILY_CALLS` | `400` | Conservative daily API call limit |
 
 ### Common Tweaks
 
 **Scan more history**
 ```js
-// In getJobEmailThreads() — change 90 to any number of days
-"newer_than:180d"
+// In getJobEmailThreads() — change 30 to any number of days
+"newer_than:90d"  // e.g., scan last 90 days instead of 30
 ```
 
 **Scan entire mailbox (one-time)**
 ```js
 // Temporarily remove newer_than and increase thread limit
-MAX_THREADS = 500
-// Remove "newer_than:90d" from the query
+MAX_THREADS = 100
+MAX_PROCESS = 50
+// Remove "newer_than:30d" from the query
 // Run once manually, then restore defaults
 ```
 
-> ⚠️ Apps Script has a **6-minute execution limit** per run. Large scans may time out — increase gradually.
+> ⚠️ Apps Script has a **6-minute execution limit** per run. Large scans may time out — increase gradually. Watch your quota usage.
+
+**Change scanning frequency**
+```js
+// In installTrigger() — change from hourly to more/less frequent
+.everyHours(2)  // Scan every 2 hours instead of 1
+```
 
 **Change summary email time**
 ```js
@@ -187,7 +199,7 @@ The **Applications** tab contains 14 columns:
 | 5 | HR Email | ✅ | Recruiter email address |
 | 6 | HR Phone | ✅ | Phone number from email signature |
 | 7 | Status | ✅ | Colour-coded application status |
-| 8 | Date Applied | ✏️ Manual | Fill in the date you submitted |
+| 8 | Date Applied | ✅ | Extracted from email or first message date (can be edited manually) |
 | 9 | Email Date | ✅ | Date of the most recent relevant email |
 | 10 | Subject | ✅ | Email subject line |
 | 11 | Gmail Link | ✅ | Direct link to the Gmail thread |

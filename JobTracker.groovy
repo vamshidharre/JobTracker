@@ -1,14 +1,16 @@
 // ============================================================
-// JOB APPLICATION TRACKER — Google Apps Script  v2.0
+// JOB APPLICATION TRACKER — Google Apps Script  v2.1
 // Paste into Extensions > Apps Script in your Google Sheet
-// Improvements: better parsing · UI dashboard · smart deduplication
+// Improvements: auto date extraction · improved German classification · smarter quota management
 // ============================================================
 
 const SHEET_NAME      = "Applications";
 const DASHBOARD_NAME  = "Dashboard";
 const LABEL_NAME      = "JobTracker";
-const MAX_THREADS     = 50;          // lowered from 150 to stay within quotas
-const MAX_PROCESS     = 30;          // max threads to fully process per run (each costs ~2 API calls)
+const MAX_THREADS     = 20;          // reduced to 20 to stay within daily Gmail quotas
+const MAX_PROCESS     = 15;          // reduced to 15 threads per run (each costs ~2-3 API calls)
+const QUOTA_PROP_KEY  = "DAILY_GMAIL_CALLS";
+const MAX_DAILY_CALLS = 400;         // Conservative daily limit to avoid quota errors
 
 // ── Column positions (1-based) ──────────────────────────────
 const COL = {
@@ -101,11 +103,16 @@ const RULES = [
     keywords: [
       "following up","just checking in","wanted to follow up",
       "any update on my application","checking on the status",
-      "additional information","additional documents","please provide","need from you",
-      "fragebogen","gehaltsvorstellung","unterlagen","zeugnisse","zurückzusenden",
-      "bitte senden sie","bitte übermitteln","noch fehlende","ergänzende unterlagen",
-      "questionnaire","salary expectation","please send","please submit","missing documents",
-      "complete your application","additional steps required",
+      "additional information required","additional documents required",
+      "please provide","need from you","we need","require from you",
+      "fragebogen ausfüllen","gehaltsvorstellung mitteilen","fehlende unterlagen",
+      "weitere unterlagen","zusätzliche unterlagen","noch benötigen wir",
+      "bitte senden sie uns","bitte übermitteln sie","bitte reichen sie nach",
+      "noch fehlende","ergänzende unterlagen einreichen","dokumente nachreichen",
+      "questionnaire","salary expectation required","please send us","please submit",
+      "missing documents","documents are missing","please complete",
+      "complete your application","additional steps required","action required",
+      "information is missing","upload additional","provide additional",
     ],
   },
   {
@@ -123,9 +130,14 @@ const RULES = [
     keywords: [
       "application received","thank you for applying","thank you for your application",
       "we have received your application","successfully submitted",
-      "application submitted","your cv has been received",
-      "bewerbungseingang","eingang deiner bewerbung","wir haben deine bewerbung erhalten",
-      "bestätigung deiner bewerbung","vielen dank für deine bewerbung",
+      "application submitted","your cv has been received","received your cv",
+      "bewerbungseingang","eingang deiner bewerbung","eingang ihrer bewerbung",
+      "wir haben deine bewerbung erhalten","wir haben ihre bewerbung erhalten",
+      "unterlagen haben wir erhalten","die unterlagen haben wir erhalten",
+      "bestätigung deiner bewerbung","bestätigung ihrer bewerbung",
+      "vielen dank für deine bewerbung","vielen dank für ihre bewerbung",
+      "vielen dank für die bewerbung","danke für die bewerbung",
+      "bewerbung wird eingehend geprüft","wir melden uns zeitnah",
     ],
   },
 ];
@@ -178,9 +190,48 @@ const HR_NAME_RE  = /(?:regards|sincerely|best|cheers|thanks|mit\s+freundlichen\
 
 
 // ============================================================
+// QUOTA MANAGEMENT
+// ============================================================
+function checkAndUpdateQuota(callsNeeded) {
+  const props = PropertiesService.getScriptProperties();
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+
+  const lastDate = props.getProperty("QUOTA_DATE");
+  let dailyCalls = parseInt(props.getProperty(QUOTA_PROP_KEY) || "0");
+
+  // Reset counter if it's a new day
+  if (lastDate !== today) {
+    dailyCalls = 0;
+    props.setProperty("QUOTA_DATE", today);
+  }
+
+  // Check if we have quota available
+  if (dailyCalls + callsNeeded > MAX_DAILY_CALLS) {
+    Logger.log(`⛔ Daily quota limit reached: ${dailyCalls}/${MAX_DAILY_CALLS} calls used. Skipping this run.`);
+    return false;
+  }
+
+  // Update the counter
+  dailyCalls += callsNeeded;
+  props.setProperty(QUOTA_PROP_KEY, dailyCalls.toString());
+  Logger.log(`📊 Quota usage: ${dailyCalls}/${MAX_DAILY_CALLS} calls today`);
+
+  return true;
+}
+
+
+// ============================================================
 // MAIN ENTRY — triggered every 30 minutes
 // ============================================================
 function runTracker() {
+  // Estimate API calls needed: 1 search + (MAX_PROCESS × 3 calls per thread)
+  const estimatedCalls = 1 + (MAX_PROCESS * 3);
+
+  // Check quota before proceeding
+  if (!checkAndUpdateQuota(estimatedCalls)) {
+    return; // Skip this run if quota exceeded
+  }
+
   const sheet    = getOrCreateSheet();
   const existing = getExistingIndex(sheet);   // { threadId: rowNum } + { fingerprint: rowNum }
   const threads  = getJobEmailThreads();
@@ -313,6 +364,9 @@ function extractData(message, thread, status) {
   const emailDate = Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
   const fp        = buildFingerprint(company, jobTitle);
 
+  // Try to extract date applied from email content or use first message date in thread
+  const dateApplied = extractDateApplied(body, subject, thread);
+
   return {
     threadId,
     company,
@@ -321,7 +375,7 @@ function extractData(message, thread, status) {
     hrEmail,
     hrPhone     : phone,
     status,
-    dateApplied : "",
+    dateApplied,
     emailDate,
     subject,
     gmailLink   : `https://mail.google.com/mail/u/0/#inbox/${threadId}`,
@@ -337,6 +391,89 @@ function extractEmail(from) {
   const m = from.match(/<([^>]+)>/);
   return m ? m[1].toLowerCase().trim() : from.toLowerCase().trim();
 }
+
+function extractDateApplied(body, subject, thread) {
+  const searchText = subject + "\n" + body.substring(0, 1000);
+
+  // Patterns to extract application date from email text
+  // EN: "You applied on March 15, 2024" / "submitted on 15/03/2024"
+  // DE: "Sie haben sich am 15.03.2024 beworben" / "eingegangen am 15.03.2024"
+  const datePatterns = [
+    // ISO format: 2024-03-15
+    /(?:applied|submitted|beworben|eingegangen)[\s\w]*(?:am|on|:)?\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/i,
+    // European format: 15.03.2024 or 15/03/2024
+    /(?:applied|submitted|beworben|eingegangen)[\s\w]*(?:am|on|:)?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i,
+    // Date in "Application received on..." context
+    /(?:received|eingegangen)[\s\w]*(?:am|on|:)?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/i,
+    /(?:received|eingegangen)[\s\w]*(?:am|on|:)?\s*(\d{4}[-./]\d{1,2}[-./]\d{1,2})/i,
+  ];
+
+  for (const pattern of datePatterns) {
+    const match = searchText.match(pattern);
+    if (match) {
+      try {
+        const dateStr = match[1];
+        const parsedDate = parseFlexibleDate(dateStr);
+        if (parsedDate) return parsedDate;
+      } catch (e) {
+        // continue to next pattern
+      }
+    }
+  }
+
+  // Fallback: Use the first message date in the thread (likely when user applied)
+  try {
+    const messages = thread.getMessages();
+    if (messages.length > 0) {
+      const firstDate = messages[0].getDate();
+      return Utilities.formatDate(firstDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    }
+  } catch (e) {
+    Logger.log(`Warning: Could not get thread messages for date extraction: ${e.message}`);
+  }
+
+  return ""; // Return empty if extraction fails
+}
+
+// Parse dates in various formats: 2024-03-15, 15.03.2024, 15/03/2024, etc.
+function parseFlexibleDate(dateStr) {
+  if (!dateStr) return "";
+
+  // Normalize separators to hyphens
+  const normalized = dateStr.replace(/[./]/g, "-");
+  const parts = normalized.split("-");
+
+  if (parts.length !== 3) return "";
+
+  let year, month, day;
+
+  // Detect format: YYYY-MM-DD vs DD-MM-YYYY
+  if (parts[0].length === 4) {
+    // ISO format: YYYY-MM-DD
+    year = parseInt(parts[0]);
+    month = parseInt(parts[1]);
+    day = parseInt(parts[2]);
+  } else {
+    // European format: DD-MM-YYYY
+    day = parseInt(parts[0]);
+    month = parseInt(parts[1]);
+    year = parseInt(parts[2]);
+  }
+
+  // Validate
+  if (year < 2000 || year > 2100) return "";
+  if (month < 1 || month > 12) return "";
+  if (day < 1 || day > 31) return "";
+
+  // Create date and format as YYYY-MM-DD
+  try {
+    const date = new Date(year, month - 1, day);
+    return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  } catch (e) {
+    return "";
+  }
+}
+
 
 function extractHrName(from, body) {
   // Clean display name from "Name <email>" format
@@ -479,9 +616,17 @@ function appendRow(sheet, d) {
 function updateStatusIfNewer(sheet, rowNum, newStatus, d) {
   const current = sheet.getRange(rowNum, COL.STATUS).getValue();
   if (!isNewerStatus(current, newStatus)) return;
+
   sheet.getRange(rowNum, COL.STATUS).setValue(newStatus);
   sheet.getRange(rowNum, COL.EMAIL_DATE).setValue(d.emailDate);
   colorStatusCell(sheet, rowNum, newStatus);
+
+  // Update Date Applied if it's currently empty and we have a value
+  const existingDateApplied = sheet.getRange(rowNum, COL.DATE_APPLIED).getValue();
+  if (!existingDateApplied && d.dateApplied) {
+    sheet.getRange(rowNum, COL.DATE_APPLIED).setValue(d.dateApplied);
+  }
+
   const existingNotes = sheet.getRange(rowNum, COL.NOTES).getValue();
   sheet.getRange(rowNum, COL.NOTES).setValue(
     (existingNotes ? existingNotes + " | " : "") +
@@ -655,10 +800,10 @@ function installTrigger() {
 
   ScriptApp.newTrigger("runTracker")
     .timeBased()
-    .everyMinutes(30)       // reduced from 15 to stay within daily quotas
+    .everyHours(1)          // changed to 1 hour (from 30 min) to reduce quota usage
     .create();
 
-  Logger.log("✅ Trigger installed — runTracker fires every 30 minutes.");
+  Logger.log("✅ Trigger installed — runTracker fires every hour.");
 }
 
 function installDailySummaryTrigger() {
